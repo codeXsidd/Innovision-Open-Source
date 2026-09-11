@@ -149,8 +149,10 @@ export async function POST(request, { params }) {
       // Upsert into global gallery
       await publishedRef.set(
         {
+          title: courseData.courseTitle,
+          description: courseData.courseDescription || "",
           courseTitle: courseData.courseTitle,
-          courseDescription: courseData.courseDescription || "",
+          courseDescription: courseData.courseDescription || ""
           chapters: courseData.chapters || [],
           difficulty: courseData.difficulty || "balanced",
           createdBy: userId,
