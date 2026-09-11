@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { getServerSession } from "@/lib/auth-server";
 
 // POST - Vote on a review (helpful or not helpful)
 export async function POST(request, { params }) {
   try {
     const session = await getServerSession();
-    if (!session) {
+    if (!session?.user?.email) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { reviewId } = params;
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
+      );
+    }
+
+    const { reviewId } = await params;
     const { voteType } = await request.json(); // "helpful" or "not_helpful"
 
     if (!reviewId) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { getServerSession } from "@/lib/auth-server";
 
 export async function GET(request) {
@@ -12,6 +12,14 @@ export async function GET(request) {
       return NextResponse.json(
         { error: "Course ID is required" },
         { status: 400 }
+      );
+    }
+
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
       );
     }
 
@@ -77,8 +85,16 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const session = await getServerSession();
-    if (!session) {
+    if (!session?.user?.email) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
+      );
     }
 
     const { courseId, rating, reviewText } = await request.json();
@@ -164,6 +180,9 @@ export async function POST(request) {
 // Helper function to update course average rating
 async function updateCourseRating(courseId) {
   try {
+    const adminDb = getAdminDb();
+    if (!adminDb) return;
+
     const reviewsSnapshot = await adminDb
       .collection("reviews")
       .where("courseId", "==", courseId)
