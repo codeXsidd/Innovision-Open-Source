@@ -91,52 +91,83 @@ export async function POST(request, { params }) {
     }
 
     const { id } = await params;
-    const { isPublic } = await request.json();
+    const body = await request.json();
+    const { isPublic } = body;
     const userId = session.user.email;
-    const adminDb = getAdminDb();
 
     if (!id || typeof isPublic !== "boolean") {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields: id and isPublic (boolean) are required" },
         { status: 400 }
       );
     }
 
-    // 1. Update course visibility in user's roadmap
-    const courseRef = adminDb.collection("users").doc(userId).collection("roadmaps").doc(id);
+    // Guard: ensure Firebase Admin is available
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      console.error("Firebase Admin DB not initialized");
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
+      );
+    }
+
+    // 1. Look up the course in user's roadmaps
+    const firestorePath = `users/${userId}/roadmaps/${id}`;
+    console.log("[course-sharing] Updating visibility at path:", firestorePath, "→ isPublic:", isPublic);
+
+    const courseRef = adminDb
+      .collection("users")
+      .doc(userId)
+      .collection("roadmaps")
+      .doc(id);
+
     const courseSnap = await courseRef.get();
-    
+
     if (!courseSnap.exists) {
-      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+      console.error("[course-sharing] Course not found at path:", firestorePath);
+      return NextResponse.json(
+        { error: `Course not found (path: ${firestorePath})` },
+        { status: 404 }
+      );
     }
 
     const courseData = courseSnap.data();
 
-    // 2. Perform the update
+    // 2. Update the isPublic field on the user's roadmap document
     await courseRef.update({
       isPublic: isPublic,
       updatedAt: new Date().toISOString(),
     });
 
-    // 3. Mirror to global published_courses collection for discovery
+    console.log("[course-sharing] Updated roadmap doc successfully");
+
+    // 3. Mirror to global published_courses collection for public discovery
     const publishedRef = adminDb.collection("published_courses").doc(id);
-    
+
     if (isPublic) {
-      // Add or Update in global gallery
-      await publishedRef.set({
-        courseTitle: courseData.courseTitle,
-        courseDescription: courseData.courseDescription || "",
-        chapters: courseData.chapters || [],
-        difficulty: courseData.difficulty || "balanced",
-        createdBy: userId,
-        authorName: session.user.name || "Anonymous",
-        authorImage: session.user.image || null,
-        status: "published",
-        publishedAt: new Date().toISOString(),
-      }, { merge: true });
+      // Upsert into global gallery
+      await publishedRef.set(
+        {
+          title: courseData.courseTitle,
+          description: courseData.courseDescription || "",
+          courseTitle: courseData.courseTitle,
+          courseDescription: courseData.courseDescription || ""
+          chapters: courseData.chapters || [],
+          difficulty: courseData.difficulty || "balanced",
+          createdBy: userId,
+          authorName: session.user.name || "Anonymous",
+          authorImage: session.user.image || null,
+          status: "published",
+          publishedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      console.log("[course-sharing] Published to global gallery:", id);
     } else {
-      // Remove from global gallery if set to private
+      // Remove from global gallery when set to private
       await publishedRef.delete();
+      console.log("[course-sharing] Removed from global gallery:", id);
     }
 
     return NextResponse.json({
@@ -145,7 +176,7 @@ export async function POST(request, { params }) {
       isPublic,
     });
   } catch (error) {
-    console.error("Error updating course visibility:", error);
+    console.error("[course-sharing] Error updating course visibility:", error);
     return NextResponse.json(
       { error: "Failed to update course: " + error.message },
       { status: 500 }

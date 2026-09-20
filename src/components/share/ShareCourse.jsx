@@ -22,7 +22,11 @@ const ShareCourse = ({ courseId, courseTitle, userId, isPublic: initialIsPublic 
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [loading, setLoading] = useState(false);
 
-  const shareUrl = `${window.location.origin}/courses/public/${courseId}`;
+  // SSR-safe: compute shareUrl only in browser context
+  const shareUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/courses/public/${courseId}`
+      : `/courses/public/${courseId}`;
 
   const copyToClipboard = async () => {
     try {
@@ -57,34 +61,36 @@ const ShareCourse = ({ courseId, courseTitle, userId, isPublic: initialIsPublic 
   const togglePublic = async () => {
     setLoading(true);
     try {
-      console.log("Toggling public status:", { courseId, userId, isPublic: !isPublic });
+      const nextIsPublic = !isPublic;
+      console.log("Toggling public status:", { courseId, isPublic: nextIsPublic });
 
       const response = await fetch(`/api/courses/public/${courseId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          isPublic: !isPublic,
-        }),
+        // userId is not sent — the server reads identity from the session cookie
+        body: JSON.stringify({ isPublic: nextIsPublic }),
       });
 
       const data = await response.json();
       console.log("API response:", data);
 
-      if (data.success) {
-        setIsPublic(!isPublic);
+      if (response.ok && data.success) {
+        setIsPublic(nextIsPublic);
         toast.success(data.message);
       } else {
-        console.error("API error:", data.error);
-        toast.error(data.error || "Failed to update visibility");
+        // Show the actual server error message for better debugging
+        const errorMsg = data.error || "Failed to update visibility";
+        console.error("API error:", errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
       console.error("Request error:", error);
-      toast.error("Failed to update visibility: " + error.message);
+      toast.error("Network error: " + error.message);
     } finally {
       setLoading(false);
     }
   };
+
 
   const shareToSocial = (platform) => {
     const text = `Check out this course: ${courseTitle}`;
