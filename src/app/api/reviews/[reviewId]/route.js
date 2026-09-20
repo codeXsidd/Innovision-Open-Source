@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { getServerSession } from "@/lib/auth-server";
 
 // PATCH - Update a review
 export async function PATCH(request, { params }) {
   try {
     const session = await getServerSession();
-    if (!session) {
+    if (!session?.user?.email) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { reviewId } = params;
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
+      );
+    }
+
+    const { reviewId } = await params;
     const { rating, reviewText } = await request.json();
 
     if (!reviewId) {
@@ -96,11 +104,19 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const session = await getServerSession();
-    if (!session) {
+    if (!session?.user?.email) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { reviewId } = params;
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Database not available. Check server environment variables." },
+        { status: 503 }
+      );
+    }
+
+    const { reviewId } = await params;
 
     if (!reviewId) {
       return NextResponse.json(
@@ -154,6 +170,9 @@ export async function DELETE(request, { params }) {
 // Helper function to update course average rating
 async function updateCourseRating(courseId) {
   try {
+    const adminDb = getAdminDb();
+    if (!adminDb) return;
+
     const reviewsSnapshot = await adminDb
       .collection("reviews")
       .where("courseId", "==", courseId)

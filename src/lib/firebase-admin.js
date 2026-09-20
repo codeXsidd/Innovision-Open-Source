@@ -2,11 +2,10 @@ import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 let adminDb = null;
-let isInitialized = false;
 
 function initializeFirebaseAdmin() {
-  if (isInitialized) return adminDb;
-  isInitialized = true;
+  if (adminDb) return adminDb;
+
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -30,9 +29,15 @@ function initializeFirebaseAdmin() {
       adminDb = getFirestore();
     } catch (error) {
       console.error("Firebase Admin initialization failed:", error.message);
+      return null;
     }
   } else {
-    adminDb = getFirestore();
+    try {
+      adminDb = getFirestore();
+    } catch (error) {
+      console.error("Firebase getFirestore failed:", error.message);
+      return null;
+    }
   }
 
   return adminDb;
